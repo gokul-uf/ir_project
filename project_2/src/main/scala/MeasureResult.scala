@@ -3,11 +3,10 @@ package src.main.scala
 import scala.collection.mutable.{ HashMap => MHashMap }
 import java.io._
 
-object MeasureResult{
-
-  val resultFile: String  = "output.txt"
+class MeasureResult {
   val qrelPath: String    = "src/main/resources/rel/relevance-judgements.csv"
-  val outputFile: String  = "score.txt"
+  val outputFile: String  = "score"
+  var resultFile: String  = "output.txt"
 
   //Function to read from file
   def readFromFile(path: String) : String =  {
@@ -18,16 +17,25 @@ object MeasureResult{
   //Function to write to an output file
   def writeToFile(output: String) {
     if (output.trim() != "") {
-      val fw = new FileWriter(this.outputFile, false)
+      val fw = new FileWriter("query_weight.txt", true) // this.outputFile + "_" + this.resultFile
       try {
         fw.write("\r\n" + output + "\r\n")
       } finally fw.close()
     }
   }
+}
 
+object MeasureResult{
   def main(args: Array[String]): Unit = {
+    var resultFile: String  = "output_0.1_0.1"
+    if(args.size==1){
+      resultFile = args(0)
+    }
 
-    var content: String = readFromFile(resultFile)
+    val obj: MeasureResult = new MeasureResult()
+    obj.resultFile = resultFile
+
+    var content: String = obj.readFromFile(resultFile)
     var lines: Array[String] = content.split("\r\n").filter { x => x.trim() != "" }
 
     // _1 -> query num, _2 -> rank, _3 -> Doc name
@@ -36,8 +44,8 @@ object MeasureResult{
 
     //results.foreach(println)
 
-    content = readFromFile(qrelPath)
-    lines   = content.split("\n").filter { x => x.trim() != "" }
+    content = obj.readFromFile(obj.qrelPath)
+    lines = content.split("\n").filter { x => x.trim() != "" }
 
 
     // _1 -> query num, _2 -> Binary relevance, _3 -> Doc name
@@ -86,7 +94,7 @@ object MeasureResult{
           numRelSoFar += 1
           var preSoFar: Double = numRelSoFar/index
           sum += preSoFar
-          println("query=" + query + " sum=" + sum)
+          // println("query=" + query + " sum=" + sum)
         }
         index += 1.0
       }
@@ -95,7 +103,7 @@ object MeasureResult{
     }
 
     val map: Double = ap.foldLeft(0.0){(sum, elem) => sum + elem._2}/40.0
-
+    println(map)
     // Calculate precision, recall and F1
     var output: String = ""
     for(i<-51 to 90){
@@ -107,7 +115,8 @@ object MeasureResult{
     }
 
     output += "map=%f".format(map)
-    writeToFile(output)
+    obj.writeToFile(resultFile + "\t map: " + map.toString + "\r\n")
+    //obj.writeToFile(output)
 
     println("Finished!")
   }

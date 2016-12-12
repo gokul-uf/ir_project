@@ -7,7 +7,7 @@ settings(
 
         )
 
-mainClass in (Compile,run) := Some("src.main.scala.MeasureResultZ")
+mainClass in (Compile,run) := Some("src.main.scala.SearchEngine")
 
 libraryDependencies  ++= Seq(
       // other dependencies here

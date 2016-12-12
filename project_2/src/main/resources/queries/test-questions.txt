@@ -1,0 +1,49 @@
+<top>
+<num> Number: 091
+<title> Topic: U.S. Army Acquisition of Advanced Weapons Systems
+</top>
+
+<top>
+<num> Number: 092
+<title> Topic: International Military Equipment Sales
+</top>
+
+<top>
+<num> Number: 093
+<title> Topic: What Backing Does the National Rifle Association Have?
+</top>
+
+<top>
+<num> Number: 094
+<title> Topic: Computer-aided Crime
+</top>
+
+<top>
+<num> Number: 095
+<title> Topic: Computer-aided Crime Detection
+</top>
+
+<top>
+<num> Number: 096
+<title> Topic: Computer-Aided Medical Diagnosis
+</top>
+
+<top>
+<num> Number: 097
+<title> Topic: Fiber Optics Applications
+</top>
+
+<top>
+<num> Number: 098
+<title> Topic: Fiber Optics Equipment Manufacturers
+</top>
+
+<top>
+<num> Number: 099 
+<title> Topic: Iran-Contra Affair
+</top>
+
+<top>
+<num> Number: 100
+<title> Topic: Controlling the Transfer of High Technology
+</top>
