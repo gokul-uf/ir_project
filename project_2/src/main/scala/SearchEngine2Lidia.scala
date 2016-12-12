@@ -11,22 +11,19 @@ import ch.ethz.dal.tinyir.util
 import ch.ethz.dal.tinyir.util.StopWatch
 import scala.math.log
 import java.io._
+import java.util.Calendar
+import java.util.Date
+import java.text.SimpleDateFormat
 
 // auxiliary classes
-class DocToTokensMap(val name: String, val tokens: Seq[(String, Int)]) {}
-
-class TestDocument(val n: String, val s: String) extends Document {
-  def title = ""
-  def body = s
-  def name = n
-  def date = ""
-  def content = body
+class DocToTokensMap(val name: String, val tokens: Seq[(String, Int)]) {
+  /* Map of document name, token and tf */
 }
 
 // search engine class
 class SearchEngineZY {
 
-  val DEBUG = false
+  val DEBUG = 3
   val SPLITTERS: String = "\"/-,&-\n()"
 
   // Paths
@@ -35,16 +32,9 @@ class SearchEngineZY {
   val QUERIES_PATH      : String = "src/main/resources/queries/questions-descriptions.txt"
   val QUERIES_REL_PATH  : String = "src/main/resources/rel/relevance-judgements.csv"
 
-  // auxiliary print function
-  def p(output : String){
-    if(DEBUG){
-      println(output)
-    }
-  }
-
-  var invIndex: MHashMap[String, ListBuffer[(String, Int)]] = MHashMap.empty
-
-  var docTokenSize: MHashMap[String, Double] = MHashMap.empty
+  // variable init
+  var invIndex     = MHashMap[String, ListBuffer[(String, Int)]]()
+  var docTokenSize = MHashMap[String, Double]()
 
   var collectionFreq: Double = 0
 
@@ -53,6 +43,14 @@ class SearchEngineZY {
   var query       : Seq[String]         = null
 
   var queryResult : MHashMap[String, ListBuffer[(String, Int)]] = MHashMap.empty
+
+  // functions
+  def p(output : String, rel: Int = 4){
+    /* auxiliary print function */
+    if(rel <= DEBUG){
+      println(output)
+    }
+  }
 
   def collectionFrequency() {
     for (item <- this.invIndex) {
@@ -64,24 +62,24 @@ class SearchEngineZY {
     println("Debug: collectionFrequency: Collection frequency is: " + this.collectionFreq)
   }
 
-  //Function to write to an output file
-  def writeToFile(output: String) {
+  def writeToFile(output: String, filename: String = this.OUTPUT_PATH) {
+    /* Function to write to an output file */
     if (output.trim() != "") {
-      val fw = new FileWriter(this.OUTPUT_PATH, true)
+      val fw = new FileWriter(filename, true)
       try {
         fw.write("\r\n" + output + "\r\n")
       } finally fw.close()
     }
   }
 
-  //Function to read from file
   def readFromFile(path: String): String = {
+    /* Function to read from file */
     val source = scala.io.Source.fromFile(path)
     try source.mkString finally source.close()
   }
 
-  //Function to read query from query description file
   def readQueriesFromFile() {
+    /* Function to read query from query description file */
     val source = scala.io.Source.fromFile(this.QUERIES_PATH)
     val lines = try source.mkString finally source.close()
     val preprocessor: Preprocessing = new Preprocessing()
@@ -99,15 +97,15 @@ class SearchEngineZY {
                       .map { x => x.substring(0, x.indexOf("<dom>")).trim() }
                       .filter { x => x.trim() != "" }
 
-    this.queriesNum.foreach(p)
+    // this.queriesNum.foreach(println)
     this.queries.foreach(x => p(x.mkString(" ")))
   }
 
   def QueryInvIndex(): MHashMap[String, ListBuffer[(String, Int)]] = {
+    /* gets pairs : token -> (doc_name, token_freq) for each token in the query */
+    val result = MHashMap[String, ListBuffer[(String, Int)]]()
 
-    val result: MHashMap[String, ListBuffer[(String, Int)]] = MHashMap.empty
     for (term <- this.query) {
-      // Question- what if query term not present in corpus
       if (this.invIndex.contains(term)) {
         result += (term -> this.invIndex(term))
       }
@@ -118,43 +116,52 @@ class SearchEngineZY {
   }
 
   def createInvIndex(): MHashMap[String, ListBuffer[(String, Int)]] = {
-    val docTokens: ListBuffer[DocToTokensMap] = tipsterParse()
-    val invIndex = new MHashMap[String, ListBuffer[(String, Int)]]()
+    /* creates an inverted index with pairs: token -> (doc_name, token_freq) */
 
     var watch: StopWatch = new StopWatch()
     watch.start
 
-    for (item <- docTokens) {
-      for (token <- item.tokens) {
+    val invIndex = new MHashMap[String, ListBuffer[(String, Int)]]()
+
+    // parse documents to list of pairs: doc_name -> (token, frequency)
+    val docTokens: ListBuffer[DocToTokensMap] = tipsterParse()
+
+    for (doc <- docTokens) {
+      for (token <- doc.tokens) {
         if (invIndex.contains(token._1)) {
-          invIndex(token._1) += (item.name -> token._2)
+          invIndex(token._1) += (doc.name -> token._2)
         } else {
-          invIndex += (token._1 -> ListBuffer((item.name, token._2)))
+          invIndex += (token._1 -> ListBuffer((doc.name, token._2)))
         }
       }
     }
 
     watch.stop
-    println("Debug: createInvIndex: Total index building time = " + watch.uptonow)
+    p("Debug: createInvIndex: Total index building time = " + watch.uptonow, 0)
 
     this.invIndex =  invIndex
     invIndex
   }
 
   def tipsterParse(): ListBuffer[DocToTokensMap] = {
-    val tipster = new TipsterStream(DOCS_PATH)
-    println("Debug: tipsterParse: Number of files in zips = " + tipster.length)
+    /* parses tipster data set to a map of document tokens */
 
-    var docTokens: ListBuffer[DocToTokensMap] = ListBuffer.empty[DocToTokensMap]
     var watch: StopWatch = new StopWatch()
-    var index: Int = 1
     watch.start
-    for (doc <- tipster.stream.take(100000)) {
+
+    val tipster     = new TipsterStream(DOCS_PATH)
+    var docTokens   = ListBuffer.empty[DocToTokensMap]
+    var index: Int  = 1
+
+    p("Debug: tipsterParse: Number of files in zips = " + tipster.length, 0)
+
+    for (doc <- tipster.stream) { // .take(100000)
       var curDocTokens = createDocToTokensMap(doc)
       docTokens += curDocTokens
 
       this.docTokenSize += (curDocTokens.name -> calculateDocTokenSize(curDocTokens.tokens))
 
+      // print time
       if (index % 5000 == 0) {
         watch.stop
         println("Index=" + index + " ; Time = " + watch.uptonow)
@@ -164,57 +171,30 @@ class SearchEngineZY {
     }
 
     watch.stop
-    //println("Debug: tipsterParse: Total read time = " + watch.uptonow)
+    p("Debug: tipsterParse: Total read time = " + watch.uptonow, 0)
 
-    return docTokens
-  }
-
-  def tipsterParseTest(): ListBuffer[DocToTokensMap] = {
-    var docTokens = ListBuffer.empty[DocToTokensMap]
-
-    //val d1 = new TestDocument("1", "mr sherlock sherlock holmes holmes who was usually very late")
-    //val d0 = new TestDocument("0", "i can tell a moriaty when i see one said holmes holmes holmes")
-
-    val d1 = new TestDocument("doc1", "Xyzzy reports aqua profit but revenue isru down")
-    val d0 = new TestDocument("doc2", "Quorus narrows quarter loss but revenue decreases further")
-
-    var doc1 = createDocToTokensMap(d0)
-    var doc2 = createDocToTokensMap(d1)
-
-    docTokens.append(doc1, doc2)
-
-    this.docTokenSize += (doc1.name -> calculateDocTokenSize(doc1.tokens))
-    this.docTokenSize += (doc2.name -> calculateDocTokenSize(doc2.tokens))
-
-    println("docTokensSize:")
-    this.docTokenSize.foreach(println)
-
-    this.queries = new Array[Seq[String]](2)
-    this.queries(0) = "revenue profit".split(" ").map { x => PorterStemmer.stem(x) }
-    this.queries(1) = "not present".split(" ").map { x => PorterStemmer.stem(x) }
-
-    this.queriesNum = Array("1", "2")
     return docTokens
   }
 
   def createDocToTokensMap(doc: Document): DocToTokensMap = {
-    //println("Debug: createDocToTokensMap: Title=" + doc.name)
+    /* creates a map from the document name to its tokens */
 
     def words: List[String] = Tokenizer.tokenize(doc.content)
-    //println("Debug: createDocToTokensMap: tokens = " + words)
-
     def wordsWithoutSW: Seq[String] = StopWords.filterOutSW(words)
     def porterStemmedList: Seq[String] = wordsWithoutSW.map(word => PorterStemmer.stem(word))
-    //println("Debug: createDocToTokensMap: Porter = " + porterStemmedList)
 
-    //return new DocToTokensMap(doc.name, wordsWithoutSW.groupBy(identity).
-    //mapValues(_.size).filter(p => p._2 > 1).toSeq) //
+    // p("Debug: createDocToTokensMap: Title=" + doc.name)
+    // p("Debug: createDocToTokensMap: tokens = " + words)
+    // p("Debug: createDocToTokensMap: Porter = " + porterStemmedList)
 
-    return new DocToTokensMap(doc.name, porterStemmedList.groupBy(identity).
-      mapValues(_.size).toSeq) //.filter(p => p._2 > 1)
+    return new DocToTokensMap(doc.name, porterStemmedList
+                                          .groupBy(identity)
+                                          .mapValues(_.size) //.filter(p => p._2 > 1)
+                                          .toSeq)
   }
 
   def calculateDocTokenSize(arg: Seq[(String, Int)]): Double = {
+    /* calculates total size of the document based on a seq. of term-fr */
     arg.foldLeft(0.0) {
       (sum, elem) =>
         sum + elem._2
@@ -223,45 +203,58 @@ class SearchEngineZY {
 }
 
 object SearchEngineZY {
+  val DEBUG = false
+
   def main(args: Array[String]): Unit = {
     var watch: StopWatch = new StopWatch()
     watch.start
 
     val obj: SearchEngineZY = new SearchEngineZY()
-
-    obj.readQueriesFromFile()
-    obj.createInvIndex()
-    obj.collectionFrequency()
-
     var queryNum: Int = 0
 
+    // gets all queries
+    obj.readQueriesFromFile()
+    // creates inverted index
+    obj.createInvIndex()
+
+    obj.collectionFrequency()
+    var date: String = getDate()
     for (q <- obj.queries) {
+      // pass query in question to search engine
       obj.query = q
       obj.QueryInvIndex()
 
-      //println("Debug: main: Result of query: " + q.mkString(" "))
-      //obj.queryResult.foreach(println)
+      // println("Debug: main: Result of query: " + q.mkString(" "))
+      // obj.queryResult.foreach(println)
 
-      //Language and Score Modelling
-      //ScoreModeler(obj)
+      // val q_weight = 0.1
+      // val d_weight = 0.1
+      for( q_weight <- (0.0 until 0.5 by 0.1)){
+        for(d_weight <- (0.0 until 0.5 by 0.1)){
+          println("Debug: \t" + q_weight + "\t" + d_weight)
+          val docRanks = LanguageModeler(obj, q_weight, d_weight)
+          // val docRanks = TFIDFModeler(obj)
 
-      val docRanks = LanguageModeler(obj)
-      //println("Debug: main: docRanks:")
-      //docRanks.foreach(println)
+          println("Debug: main: docRanks:")
+          docRanks.foreach(println)
 
-      // Write output to file
-      val sortedOutput: Seq[(String, Double)] = docRanks.toSeq
-        // For this query, only consider docs whose binary relevance for the query is present in qrels doc
-        //.filter(p => qrelMap(obj.queriesNum(queryNum).toInt).contains(p._1))
-        .sortBy(-_._2).take(100)
-      var outputString: String = ""
-      var index: Int = 1
-      for (o <- sortedOutput) {
-        outputString += obj.queriesNum(queryNum) + " " + index.toString() + " " + o._1 + " " + o._2 + "\r\n"
-        index += 1
+          // Write output to file
+          val sortedOutput: Seq[(String, Double)] = docRanks
+                                                      .toSeq
+                                                      .sortBy(-_._2)
+                                                      .take(100)
+          // create string to print for each query
+          var outputString: String = ""
+          var index: Int = 1
+          for (o <- sortedOutput) {
+            outputString += obj.queriesNum(queryNum) + " " + index.toString() + " " + o._1 + " " + o._2 + "\r\n"
+            index += 1
+          }
+
+          var outputFileName : String = "output_" + date + "_" + q_weight.toString + "_" + d_weight.toString
+          obj.writeToFile(outputString, outputFileName)
+        }
       }
-
-      obj.writeToFile(outputString)
 
       queryNum += 1
     }
@@ -271,16 +264,40 @@ object SearchEngineZY {
     println("Finished!")
   }
 
-  def ScoreModeler(obj: SearchEngineZY): Unit = {}
+  def getDate() : String = {
+    // (1) get today's date
+    var today : Date= Calendar.getInstance().getTime();
 
-  def LanguageModeler(obj: SearchEngineZY): MHashMap[String, Double] = {
+    // (2) create a date "formatter" (the date format we want)
+    var formatter : SimpleDateFormat = new SimpleDateFormat("yyyy-MM-dd-hh.mm.ss");
 
+    // (3) create a new String using the date format we want
+    var folderName : String = formatter.format(today);
+    folderName
+  }
+
+  def p(output : String){
+    /* auxiliary print function */
+    if(DEBUG){
+      println(output)
+    }
+  }
+
+  def LanguageModeler(obj: SearchEngineZY,
+                      querySizeWeight: Double = 0.1,
+                      docSizeWeight: Double = 0.1): MHashMap[String, Double] = {
+    // TODO change names of some variables
+    // check if it's better to use logarithm instead of plain divisions
+    //
     var watch: StopWatch = new StopWatch()
     watch.start
-    var lambda: Double = 0.99
+
+    var lambda          : Double = 0.99
+    //var querySizeWeight : Double = 0.1
+    //var docSizeWeight   : Double = 0.1
 
     // MHashMap[DocName, MHashMap[query_term, occurance_in_document]]
-    var docToQueryTermMap: MHashMap[String, MHashMap[String, Double]] = MHashMap.empty
+    var docToQueryTermMap = MHashMap[String, MHashMap[String, Double]]()
 
     // Find document to terms in query mapping
     for (q <- obj.queryResult) {
@@ -297,27 +314,22 @@ object SearchEngineZY {
       }
     }
 
-    //println("Debug: LanguageModeler: docToQueryTermMap:")
-    //docToQueryTermMap.foreach(println)
+    // println("Debug: LanguageModeler: docToQueryTermMap:")
+    // docToQueryTermMap.foreach(println)
 
     // MHashMap[doc_name, rank]
     var docRanks: MHashMap[String, Double] = MHashMap.empty
-    // Initialize for each document
-    for (d <- docToQueryTermMap) {
-      docRanks += (d._1 -> 0.0)
-    }
+    // Initialize to 0 for each document
+    for (d <- docToQueryTermMap) { docRanks += (d._1 -> 0.0) }
 
     // For this query, calculate ranking of documents
-    //todo: vary lambda according to query size
-    lambda = 1.0 - (obj.query.size * 0.1)
-    /*if (obj.query.size <= 3){
-      lambda = 0.9
-    } else {
-      lambda = 0.3
-    }*/
+    lambda = 1.0 - (obj.query.size * querySizeWeight)
+
+
     for (t <- obj.query) {
       // Proceed only if query term present in corpus
       if (obj.invIndex.contains(t)) {
+        // P(w)
         var p_t_mc: Double = 0.0
 
         p_t_mc = obj.invIndex(t).foldLeft(0.0) {
@@ -328,10 +340,12 @@ object SearchEngineZY {
         p_t_mc /= obj.collectionFreq
 
         for (d <- docToQueryTermMap) {
+          lambda = 1.0 - (obj.query.size * querySizeWeight)
           var p_t_md: Double = 0.0
           //var tf_t_d: Double = 0.0
           //var l_d: Double = 0.0
           if (d._2.contains(t)) {
+            // tf_t_d / l_d
             p_t_md = d._2(t) / obj.docTokenSize(d._1)
 
             //Bayesian
@@ -339,7 +353,8 @@ object SearchEngineZY {
             //l_d = obj.docTokenSize(d._1)
           }
 
-          //lambda = 1.0 - (obj.docTokenSize(d._1)/obj.collectionFreq)
+          lambda = lambda - (obj.docTokenSize(d._1)/obj.collectionFreq)*docSizeWeight
+          // println("Debug: \t lambda : \t" + lambda)
           docRanks(d._1) += log(((1 - lambda) * p_t_mc) + (lambda * p_t_md))
 
           //Bayesian
@@ -353,11 +368,10 @@ object SearchEngineZY {
     return docRanks
   }
 
-  def UniGramLanguageModeler(obj: SearchEngineZY): MHashMap[String, Double] = {
+  def TFIDFModeler(obj: SearchEngineTFIDF): MHashMap[String, Double] = {
 
     var watch: StopWatch = new StopWatch()
     watch.start
-    var lambda: Double = 0.99
 
     // MHashMap[DocName, MHashMap[query_term, occurance_in_document]]
     var docToQueryTermMap: MHashMap[String, MHashMap[String, Double]] = MHashMap.empty
@@ -377,7 +391,7 @@ object SearchEngineZY {
       }
     }
 
-    //println("Debug: LanguageModeler: docToQueryTermMap:")
+    //println("Debug: ScoreModeler: docToQueryTermMap:")
     //docToQueryTermMap.foreach(println)
 
     // MHashMap[doc_name, rank]
@@ -387,140 +401,30 @@ object SearchEngineZY {
       docRanks += (d._1 -> 0.0)
     }
 
-    // For each candidate document, calculate rank score for the query
-    for (d <- docToQueryTermMap) {
+    for (t <- obj.query) {
+      // Proceed only if query term present in corpus
+      if (obj.queryResult.contains(t)) {
+        var log_idf: Double = 0.0
 
-      for(t <- obj.query) {
-        var tf_t: Double = 0.0
-        if (d._2.contains(t)) {
-          tf_t = d._2(t)
-        }
+        log_idf = obj.queryResult(t).size
 
-        var p_t_md: Double = tf_t / obj.docTokenSize(d._1)
+        log_idf = log( obj.totalDocs/log_idf )
 
-        var cf_t: Double = 0.0
-        if (obj.invIndex.contains(t)) {
-          cf_t = obj.invIndex(t).foldLeft(0.0) {
-            (sum, elem) =>
-              sum + elem._2
-          }
-        }
-
-        if(cf_t == 0.0){
-          printf("Collection frequency zero for " + t)
-        }
-
-        var p_t_mc: Double = cf_t / obj.collectionFreq
-        docRanks(d._1) += log(((1 - lambda) * p_t_mc) + (lambda * p_t_md))
-      }
-    }
-
-    watch.stop
-    //println("Debug: LanguageModeler: Time taken to rank = " + watch.uptonow)
-    return docRanks
-  }
-
-  def BiGramLanguageModeler(obj: SearchEngineZY): MHashMap[String, Double] = {
-
-    var watch: StopWatch = new StopWatch()
-    watch.start
-    var lambda: Double = 0.8
-
-    // MHashMap[DocName, MHashMap[query_term, occurance_in_document]]
-    var docToQueryTermMap: MHashMap[String, MHashMap[String, Double]] = MHashMap.empty
-
-    // Find document to terms in query mapping
-    for (q <- obj.queryResult) {
-      for (doc <- q._2) {
-        if (docToQueryTermMap.contains(doc._1)) {
-          if (docToQueryTermMap(doc._1).contains(q._1)) {
-            docToQueryTermMap(doc._1)(q._1) += doc._2
-          } else {
-            docToQueryTermMap(doc._1) += (q._1 -> doc._2)
-          }
-        } else {
-          docToQueryTermMap += (doc._1 -> MHashMap(q._1 -> doc._2))
-        }
-      }
-    }
-
-    //println("Debug: LanguageModeler: docToQueryTermMap:")
-    //docToQueryTermMap.foreach(println)
-
-    // MHashMap[doc_name, rank]
-    var docRanks: MHashMap[String, Double] = MHashMap.empty
-    // Initialize for each document
-    for (d <- docToQueryTermMap) {
-      docRanks += (d._1 -> 0.0)
-    }
-
-    // For each candidate document, calculate rank score for the query
-    for (d <- docToQueryTermMap) {
-      if (obj.query.size == 1) {
-        var t1: String = obj.query(0)
-
-        var tfT1T2: Double = 0.0
-        if (d._2.contains(t1)) {
-          tfT1T2 = d._2(t1)
-        }
-
-        var p_tfT1T2: Double = tfT1T2 / obj.docTokenSize(d._1)
-
-        var cfT1T2: Double = 0.0
-        if (obj.invIndex.contains(t1)) {
-          cfT1T2 = obj.invIndex(t1).foldLeft(0.0) {
-            (sum, elem) =>
-              sum + elem._2
-          }
-        }
-
-        var p_cfT1T2: Double = cfT1T2 / obj.collectionFreq
-        docRanks(d._1) += log(((1 - lambda) * p_cfT1T2) + (lambda * p_tfT1T2))
-      } else {
-
-        var tIndex: Int = 0
-
-        while (tIndex < obj.query.size - 1) {
-          var t1: String = obj.query(tIndex)
-          var t2: String = obj.query(tIndex + 1)
-
-          var tfT1T2: Double = 999999.0
-          if (d._2.contains(t1)) {
-            tfT1T2 = math.min(tfT1T2, d._2(t1))
-          } else {
-            tfT1T2 = 0.0
+        for (d <- docToQueryTermMap) {
+          var log_tf: Double = 0.0
+          if (d._2.contains(t)) {
+            log_tf = d._2(t) / obj.docTokenSize(d._1)
+            log_tf = log( 1 + log_tf )
           }
 
-          if (d._2.contains(t2)) {
-            tfT1T2 = math.min(tfT1T2, d._2(t2))
-          } else {
-            tfT1T2 = 0.0
-          }
-          var p_tfT1T2: Double = tfT1T2 / obj.docTokenSize(d._1)
-
-          var tfT1: Double = 0.0
-          if (d._2.contains(t1)) {
-            tfT1 = d._2(t1)
-          }
-          var p_tfT1: Double = tfT1 / obj.docTokenSize(d._1)
-
-          var cfT1: Double = 0.0
-          if (obj.invIndex.contains(t1)) {
-            cfT1 = obj.invIndex(t1).foldLeft(0.0) {
-              (sum, elem) =>
-                sum + elem._2
-            }
-          }
-          var p_cfT1: Double = cfT1 / obj.collectionFreq
-
-          docRanks(d._1) += log((0.5 * p_tfT1T2) + (0.3 * p_tfT1) + (0.2 * p_cfT1))
-          tIndex += 1
+          docRanks(d._1) += (log_tf * log_idf)
         }
       }
     }
 
     watch.stop
-    //println("Debug: LanguageModeler: Time taken to rank = " + watch.uptonow)
+    //println("Debug: ScoreModeler: Time taken to rank = " + watch.uptonow)
     return docRanks
+
   }
 }
